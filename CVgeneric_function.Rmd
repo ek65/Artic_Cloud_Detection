@@ -1,0 +1,46 @@
+---
+title: "CVgeneric_function"
+output: html_document
+---
+
+```{r}
+percent_error<-function(truth, predictions) {
+  return(sum(truth!=predictions)/length(truth))
+}
+
+CVgeneric<-function(K,classifier,features,labels,loss=percent_error) {
+  
+  n<-nrow(features)
+  fold_size<-floor(n/K)
+  k_fold_loss<-c()
+  
+  for (i in 1:K) {
+    features_val<-c()
+    features_train<-c()
+    labels_val<-c()
+    labels_train<-c()
+    
+  if (i!=K) {
+    features_val<-features[(1+fold_size*(i-1)):(i*fold_size),]
+    features_train<-features[-((1+fold_size*(i-1)):(i*fold_size)),]
+    labels_val<-labels[(1+fold_size*(i-1)):(i*fold_size)]
+    labels_train<-labels[-((1+fold_size*(i-1)):(i*fold_size))]
+  } else {
+    features_val<-features[(1+fold_size*(i-1)):n,]
+    features_train<-features[-((1+fold_size*(i-1)):n),]
+    labels_val<-labels[(1+fold_size*(i-1)):n]
+    labels_train<-labels[-((1+fold_size*(i-1)):n)]
+  }
+    train<-cbind(features_train, labels_train)
+    colnames(train)[ncol(train)]<-'expert'
+    predictions<-classifier(train,features_val)
+    curr_lost<-loss(labels_val,predictions)
+    k_fold_loss<-c(k_fold_loss,curr_lost)
+    
+  }
+  return(k_fold_loss)
+}
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

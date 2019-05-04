@@ -1,0 +1,799 @@
+---
+title: "P2"
+output: html_document
+---
+
+```{r}
+### This script covers mainly analysis using second splitting method (Edward Kim)
+
+setwd("/Users/edwardkim/Desktop/Stat154/project2/converted_data") ## set this path to your folder containing given image data
+library(ggplot2)
+
+## Problem 1 Part b (Figure 1)
+image1 <-read.csv(file="image1.csv", header=FALSE)
+image2 <-read.csv(file="image2.csv", header=FALSE)
+image3 <-read.csv(file="image3.csv", header=FALSE)
+
+colnames(image1)<- c("y", "x", "expert", "NDAI","SD","CORR","DF","CF","BF","AF","AN")
+colnames(image2)<- c("y", "x", "expert", "NDAI","SD","CORR","DF","CF","BF","AF","AN")
+colnames(image3)<- c("y", "x", "expert", "NDAI","SD","CORR","DF","CF","BF","AF","AN")
+
+image1 <- image1[image1$expert!=0,]
+image2 <- image2[image2$expert!=0,]
+image3 <- image3[image3$expert!=0,]
+
+ggplot() + geom_point(aes(x= image1$x, y= image1$y, col= image1$expert)) + labs(x = "x", y = "y", col="expert_label") + ggtitle("Image1 expert_label according to x, y")
+
+ggplot() + geom_point(aes(x= image2$x, y= image2$y, col= image2$expert)) + labs(x = "x", y = "y", col="expert_label") + ggtitle("Image2 expert_label according to x, y")
+
+ggplot() + geom_point(aes(x= image3$x, y= image3$y, col= image3$expert)) + labs(x = "x", y = "y", col="expert_label") + ggtitle("Image3 expert_label according to x, y")
+
+
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+## Problem 2 Part (a) Partition the dataset
+# Method 2 : Split by x values in chunks
+
+image1 <- image1[image1$expert!=0,]
+image2 <- image2[image2$expert!=0,]
+image3 <- image3[image3$expert!=0,]
+
+
+datasets <- list(image1, image2, image3)
+split_data <- list()
+
+index = 1
+for(i in 1:3){
+  x_start = 65
+  for (j in 1:3){
+    split_data[[index]] <- datasets[[i]][(datasets[[i]]$x > x_start) & (datasets[[i]]$x < x_start+100)  , ]
+    x_start = x_start+100
+    index = index+1
+  }
+}
+
+
+ggplot() + geom_point(aes(x= split_data[[4]]$x, y= split_data[[4]]$y, col= split_data[[4]]$expert)) + labs(x = "x", y = "y", col="expert_label") + ggtitle("Image1 expert_label according to x, y")
+
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+## Problem 2: Part b
+
+# create train dataset
+train <-data.frame()
+train <- rbind(train, split_data[[2]])
+train <- rbind(train, split_data[[4]])
+train <- rbind(train, split_data[[6]])
+train <- rbind(train, split_data[[8]])
+train <- rbind(train, split_data[[9]])
+
+
+# create validation set
+validation <- data.frame()
+validation <- rbind(validation, split_data[[3]])
+validation <- rbind(validation, split_data[[7]])
+
+# create cross validation set
+t <- data.frame()
+t<- rbind(t, train)
+t<- rbind(t, validation)
+
+# create test set
+test <- data.frame()
+test <-rbind(test, split_data[[1]])
+test <-rbind(test, split_data[[5]])
+
+
+# validation error for naive classifier
+count=0
+for (j in 1:nrow(validation)){
+  if(validation$expert[j] == -1){
+    count = count +1
+  }
+}
+validation_error = (1- count/nrow(validation))*100
+
+# test error for naive classifier
+count=0
+for (j in 1:nrow(test)){
+  if(test$expert[j] == -1){
+    count = count +1
+  }
+}
+
+test_error = (1- count/nrow(test))*100
+
+```
+
+
+
+```{r}
+## Problem 2: Part c
+## Figure 5 
+
+boxplot(NDAI~expert, data=image1, main="Relation between NDAI and expert", 
+   xlab="expert", ylab="NDAI")
+boxplot(CORR~expert, data=image1, main="Relation between CORR and expert", 
+   xlab="expert", ylab="CORR")
+boxplot(AF~expert, data=image1, main="Relation between AF and expert", 
+   xlab="expert", ylab="AF")
+boxplot(AN~expert, data=image1, main="Relation between AN and expert", 
+   xlab="expert", ylab="AN")
+boxplot(SD~expert, data=image1, main="Relation between SD and expert", 
+   xlab="expert", ylab="SD")
+boxplot(CF~expert, data=image1, main="Relation between CF and expert", 
+   xlab="expert", ylab="CF")
+boxplot(DF~expert, data=image1, main="Relation between DF and expert", 
+   xlab="expert", ylab="DF")
+
+
+## Figure 2
+install.packages("corrplot")
+library(corrplot)
+data_all<-rbind(image1,image2,image3)
+corrplot(cor(data_all), method = "number")
+
+clouds<-data_all[data_all$expert==1,]
+notclouds<-data_all[data_all$expert==-1,]
+
+data<-data_all[data_all$expert==1|data_all$expert==-1,]
+
+corrplot(cor(clouds), method = "number")
+corrplot(cor(notclouds), method = "number")
+corrplot(cor(data),method="number")
+```
+
+
+
+```{r}
+## Problem 3: Part a
+
+############## Cross Validation for LDA, QDA, Logistic regression, and random forest (Table 3)
+
+# install.packages("ranger")
+require(ranger)
+cv_data<-rbind(train, validation)
+
+percent_error<-function(truth, predictions) {
+  return(sum(truth!=predictions)/length(truth))
+}
+
+CVgeneric<-function(K,classifier,features,labels,loss=percent_error) {
+  
+  n<-nrow(features)
+  fold_size<-floor(n/K)
+  k_fold_loss<-c()
+  
+  for (i in 1:K) {
+    features_val<-c()
+    features_train<-c()
+    labels_val<-c()
+    labels_train<-c()
+    
+  if (i!=K) {
+    features_val<-features[(1+fold_size*(i-1)):(i*fold_size),]
+    features_train<-features[-((1+fold_size*(i-1)):(i*fold_size)),]
+    labels_val<-labels[(1+fold_size*(i-1)):(i*fold_size)]
+    labels_train<-labels[-((1+fold_size*(i-1)):(i*fold_size))]
+  } else {
+    features_val<-features[(1+fold_size*(i-1)):n,]
+    features_train<-features[-((1+fold_size*(i-1)):n),]
+    labels_val<-labels[(1+fold_size*(i-1)):n]
+    labels_train<-labels[-((1+fold_size*(i-1)):n)]
+  }
+    train<-cbind(features_train, labels_train)
+    colnames(train)[ncol(train)]<-'expert'
+    predictions<-classifier(train,features_val)
+    curr_lost<-loss(labels_val,predictions)
+    k_fold_loss<-c(k_fold_loss,curr_lost)
+    
+  }
+  return(k_fold_loss)
+}
+
+## Random Forrest
+rf_classifier<-function(data_train, data_val) {
+  model_rf <- ranger(formula = expert ~ NDAI+SD+AF, data=data_train)
+  predictions<-predict(model_rf,data_val)
+  return(as.numeric(as.character(ifelse(predictions$predictions>0, 1, -1))))
+}
+
+cv_loss_rf <- CVgeneric(5,rf_classifier,subset(cv_data, select=c(NDAI,SD,AF)), cv_data$expert)
+avg_rf <- mean(cv_loss_rf)
+
+### LDA
+lda_classifier<-function(data_train, data_val) {
+  model_lda <- lda(formula = expert ~ NDAI+SD+AF, data=data_train, prior = c(1,1)/2)
+  predictions<-predict(model_lda,data_val)
+  return(as.numeric(as.character(predictions$class)))
+}
+
+cv_loss_lda<-CVgeneric(5,lda_classifier,subset(cv_data,select=c(NDAI,SD,AF)),cv_data$expert)
+avg_lda <- mean(cv_loss_lda)
+
+
+### QDA 
+qda_classifier<-function(data_train, data_val) {
+  model_qda <- qda(formula = expert ~ NDAI+SD+AF, data=data_train, prior = c(1,1)/2)
+  predictions<-predict(model_qda,data_val)
+  return(as.numeric(as.character(predictions$class)))
+}
+
+cv_loss_qda<-CVgeneric(5,qda_classifier,subset(cv_data,select=c(NDAI,SD,AF)),cv_data$expert)
+avg_qda <- mean(cv_loss_qda)
+
+### Logistic Regression
+require(nnet)
+lr_classifier<-function(data_train, data_val) {
+  model_qda <- multinom(formula = expert ~ NDAI+SD+AF, data=data_train, prior = c(1,1)/2)
+  predictions<-predict(model_qda,data_val)
+  return(as.numeric(as.character(predictions)))
+}
+cv_loss_lr<-CVgeneric(5,lr_classifier,subset(cv_data,select=c(NDAI,SD,AF)),cv_data$expert)
+avg_lr <- mean(cv_loss_lr)
+
+
+################################## Checking for Assumptions of each classification method 
+cloud <- cv_data[cv_data$expert==1]
+non_cloud <- cv_data[cv_data$expert==-1,]
+
+c <- cloud$NDAI
+c <- cbind(c, cloud$SD)
+c <- cbind(c, cloud$AF)
+colnames(c) <- c("NDAI", "SD","AF")
+
+n <- non_cloud$NDAI
+n <- cbind(n, non_cloud$SD)
+n <- cbind(n, non_cloud$AF)
+colnames(n) <- c("NDAI", "SD","AF")
+
+#### Compute the difference in Covariance of cloud vs non-cloud data [Figure 7]
+cloud_cov <- cov(c)
+noncloud_cov <- cov(n)
+diff<- cloud_cov-noncloud_cov
+
+
+### Figure 8. Kernel Density of each feature in cross validation data set
+ggplot(cv_data)+geom_density(aes(x=NDAI, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="NDAI Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(cv_data)+geom_density(aes(x=SD, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="SD Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(cv_data)+geom_density(aes(x=AF, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="AF Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(cv_data)+geom_density(aes(x=CORR, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="CORR Kernel Density")+scale_fill_discrete(name="expert label")
+
+
+
+## These are not shown in paper.. plotted the kernel density of features in test data set
+ggplot(test)+geom_density(aes(x=NDAI, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="NDAI Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(test)+geom_density(aes(x=SD, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="SD Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(test)+geom_density(aes(x=AF, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="AF Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(test)+geom_density(aes(x=CORR, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="CORR Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(test)+geom_density(aes(x=AF, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="AF Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(test)+geom_density(aes(x=DF, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="DF Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(test)+geom_density(aes(x=CF, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="CF Kernel Density")+scale_fill_discrete(name="expert label")
+
+ggplot(test)+geom_density(aes(x=BF, fill=as.factor(expert), alpha=0.5))+theme(legend.position="bottom")+theme(aspect.ratio=4/3)+
+  labs(title="BF Kernel Density")+scale_fill_discrete(name="expert label")
+
+
+```
+
+```{r}
+## Problem 3: Part b
+
+#LDA, QDA, Logistic Regression, Random Forest
+# install.packages("ROCR")
+# install.packages("magrittr") # only needed the first time you use it
+# install.packages("dplyr")    # alternative installation of the %>%
+library(magrittr) # need to run every time you start R and want to use %>%
+library(dplyr)    # alternative, this also loads %>%
+library(ROCR)
+require(MASS)
+
+
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x-0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+
+###### Table 4 and Table 5 is computed below  ##############
+### LDA Test Error
+lda_fit <- lda(formula = expert ~ NDAI+SD+AF, data=cv_data, prior = c(1,1)/2)
+lda_predict_test <- predict(object = lda_fit, newdata=test)
+
+success=0
+for(i in 1:nrow(test)){
+  if(lda_predict_test$class[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+lda_error_test<-(1-success/nrow(test))*100
+
+### LDA Validation Error
+lda_fit <- lda(formula = expert ~ NDAI+SD+AF, data=train, prior = c(1,1)/2)
+lda_pred_val <- predict(object = lda_fit, newdata=validation)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(lda_pred_val$class[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+lda_error_val<-(1-success/nrow(validation))*100
+
+
+### QDA Test Error
+qda_fit <- qda(formula = expert ~ NDAI+SD+AF, data=cv_data, prior = c(1,1)/2)
+qda_predict_test <- predict(object = qda_fit, newdata=test)
+
+success=0
+for(i in 1:nrow(test)){
+  if(qda_predict_test$class[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+qda_error_test <- (1-success/nrow(test))*100
+
+
+### QDA Validation Error
+qda_fit <- qda(formula = expert ~ NDAI+SD+AF, data=train, prior = c(1,1)/2)
+qda_predict_val <- predict(object = qda_fit, newdata=validation)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(qda_predict_val$class[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+qda_error_val <- (1-success/nrow(validation))*100
+
+
+### Logistic Regression Test Error
+require(nnet)
+glm_fit <- multinom(expert ~ NDAI+SD+AF, data = cv_data)
+# glm_predict_test <- predict(glm_fit, newdata=test, type="probs")
+glm_predict_test <- predict(glm_fit, newdata=test)
+
+success=0
+for(i in 1:nrow(test)){
+  if(glm_predict_test[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+glm_error_test <- (1-success/nrow(test))*100
+
+
+### Logistic Regression Validation Error
+require(nnet)
+glm_fit <- multinom(expert ~ NDAI+SD+AF, data = train)
+# glm_predict_val <- predict(glm_fit, newdata=validation, type="probs")
+glm_predict_val <- predict(glm_fit, newdata=validation)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(glm_predict_val[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+glm_error_val <- (1-success/nrow(validation))*100
+
+
+### Random Forrest Test Error
+rf_fit <- ranger(formula = expert ~ NDAI+SD+AF, data=cv_data)
+rf_predict_test <-predict(rf_fit, data=test)
+rf_p <- ifelse(rf_predict_test$predictions>0, 1, -1)
+
+success=0
+for(i in 1:nrow(test)){
+  if(rf_p[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+rf_error_test <- (1-success/nrow(test))*100
+
+### Random Forrest Validation Error
+rf_fit <- ranger(formula = expert ~ NDAI+SD+AF, data=train)
+rf_predict_val<-predict(rf_fit, data=validation)
+rf_p <- ifelse(rf_predict_val$predictions>0, 1, -1)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(rf_p[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+rf_error_val <- (1-success/nrow(validation))*100
+
+############################# Computing Cutoff #####################################
+
+################# Metric 1 #############
+pred1 <- prediction(data.frame(glm_predict_val), validation$expert)
+perf1 <- performance(pred1, measure = "tpr", x.measure = "fpr")
+print(glm_cutoff<- opt.cut(perf1, pred1))
+
+pred2 <- prediction(lda_pred_val$posterior[,2], validation$expert)
+perf2 <- performance(pred2, measure = "tpr", x.measure = "fpr")
+print(lda_cutoff<- opt.cut(perf2, pred2))
+
+pred3 <- prediction(qda_predict_val$posterior[,2], validation$expert)
+perf3 <- performance(pred3, measure = "tpr", x.measure = "fpr")
+print(qda_cutoff <- opt.cut(perf3, pred3))
+
+pred4 <- prediction(rf_predict_val$predictions, validation$expert)
+perf4 <- performance(pred4, measure = "tpr", x.measure = "fpr")
+print(rf_cutoff<- opt.cut(perf4, pred4))
+
+
+############################# Recomputing LDA Test Error based on computed Optimal Thresholds using Metric 1 #############################
+### LDA Test Error
+lda_fit <- lda(formula = expert ~ NDAI+SD+AF, data=cv_data, prior = c(1,1)/2)
+lda_predict_test <- predict(object = lda_fit, newdata=test)
+lda_predict_test <- ifelse(lda_predict_test$posterior > lda_cutoff[3], -1, 1)
+
+success=0
+for(i in 1:nrow(test)){
+  if(lda_predict_test[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+lda_error_test2<-(1-success/nrow(test))*100
+
+### LDA Validation Error
+lda_fit <- lda(formula = expert ~ NDAI+SD+AF, data=train, prior = c(1,1)/2)
+lda_pred_val <- predict(object = lda_fit, newdata=validation)
+lda_pred_val <- ifelse(lda_pred_val$posterior>lda_cutoff[3], -1, 1)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(lda_pred_val[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+lda_error_val2<-(1-success/nrow(validation))*100
+
+
+### QDA Test Error
+qda_fit <- qda(expert ~ NDAI+SD+AF, data=cv_data, prior = c(1,1)/2)
+qda_predict_test <- predict(object = qda_fit, newdata=test)
+qda_predict_test <- ifelse(qda_predict_test$posterior>qda_cutoff[3], -1, 1)
+
+success=0
+for(i in 1:nrow(test)){
+  if(qda_predict_test[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+qda_error_test2 <- (1-success/nrow(test))*100
+
+
+### QDA Validation Error
+qda_fit <- qda(formula = expert ~ NDAI+SD+AF, data=train, prior = c(1,1)/2)
+qda_predict_val <- predict(object = qda_fit, newdata=validation)
+qda_predict_val <- ifelse(qda_predict_val$posterior>qda_cutoff[3], -1, 1)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(qda_predict_val[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+qda_error_val2 <- (1-success/nrow(validation))*100
+
+
+### Logistic Regression Test Error
+require(nnet)
+glm_fit <- multinom(expert ~ NDAI+SD+AF, data = cv_data)
+glm_predict_test <- predict(glm_fit, newdata=test, type="probs")
+glm_predict_test <- ifelse(glm_predict_test > glm_cutoff[3], 1, -1)
+# glm_predict <- predict(glm_fit, newdata=test)
+
+success=0
+for(i in 1:nrow(test)){
+  if(glm_predict_test[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+glm_error_test2 <- (1-success/nrow(test))*100
+
+
+### Logistic Regression Validation Error
+require(nnet)
+glm_fit <- multinom(expert ~ NDAI+SD+AF, data = train)
+glm_predict_val <- predict(glm_fit, newdata=validation, type="probs")
+glm_predict_val <- ifelse(glm_predict_val > glm_cutoff[3], 1, -1)
+# glm_predict <- predict(glm_fit, newdata=test)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(glm_predict_val[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+glm_error_val2 <- (1-success/nrow(validation))*100
+
+
+### Random Forrest Test Error
+rf_fit <- ranger(formula = expert ~ NDAI+SD+AF, data=cv_data)
+rf_predict_test <-predict(rf_fit, data=test)
+rf_p <- ifelse(rf_predict_test$predictions > rf_cutoff[3], 1, -1)
+
+success=0
+for(i in 1:nrow(test)){
+  if(rf_p[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+rf_error_test2 <- (1-success/nrow(test))*100
+
+### Random Forrest Validation Error
+rf_fit <- ranger(formula = expert ~ NDAI+SD+AF, data=train)
+rf_predict_val<-predict(rf_fit, data=validation)
+rf_p <- ifelse(rf_predict_val$predictions > rf_cutoff[3], 1, -1)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(rf_p[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+rf_error_val2 <- (1-success/nrow(validation))*100
+
+
+
+############################# Computing Cutoff #####################################
+
+################# Metric 2 #############
+pred1 <- prediction(data.frame(glm_predict_val), validation$expert)
+perf1 <- performance(pred1, measure = "sens", x.measure = "spec")
+print(glm_cutoff2<- opt.cut(perf1, pred1))
+
+pred2 <- prediction(lda_pred_val$posterior[,2], validation$expert)
+perf2 <- performance(pred2, measure = "sens", x.measure = "spec")
+print(lda_cutoff2<- opt.cut(perf2, pred2))
+
+pred3 <- prediction(qda_predict_val$posterior[,2], validation$expert)
+perf3 <- performance(pred3, measure = "sens", x.measure = "spec")
+print(qda_cutoff2 <- opt.cut(perf3, pred3))
+
+pred4 <- prediction(rf_predict_val$predictions, validation$expert)
+perf4 <- performance(pred4, measure = "sens", x.measure = "spec")
+print(rf_cutoff2<- opt.cut(perf4, pred4))
+
+
+############################# Recomputing LDA Test Error based on computed Optimal Thresholds using Metric 2#############################
+### LDA Test Error
+lda_fit <- lda(formula = expert ~ NDAI+SD+AF, data=cv_data, prior = c(1,1)/2)
+lda_predict_test <- predict(object = lda_fit, newdata=test)
+lda_predict_test <- ifelse(lda_predict_test$posterior > lda_cutoff2[3], -1, 1)
+
+success=0
+for(i in 1:nrow(test)){
+  if(lda_predict_test[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+lda_error_test3<-(1-success/nrow(test))*100
+
+### LDA Validation Error
+lda_fit <- lda(formula = expert ~ NDAI+SD+AF, data=train, prior = c(1,1)/2)
+lda_pred_val <- predict(object = lda_fit, newdata=validation)
+lda_pred_val <- ifelse(lda_pred_val$posterior>lda_cutoff2[3], -1, 1)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(lda_pred_val[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+lda_error_val3<-(1-success/nrow(validation))*100
+
+
+### QDA Test Error
+qda_fit <- qda(formula = expert ~ NDAI+SD+AF, data=cv_data, prior = c(1,1)/2)
+qda_predict_test <- predict(object = qda_fit, newdata=test)
+qda_predict_test <- ifelse(qda_predict_test$posterior>qda_cutoff2[3], -1, 1)
+
+success=0
+for(i in 1:nrow(test)){
+  if(qda_predict_test[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+qda_error_test3 <- (1-success/nrow(test))*100
+
+
+### QDA Validation Error
+qda_fit <- qda(formula = expert ~ NDAI+SD+AF, data=train, prior = c(1,1)/2)
+qda_predict_val <- predict(object = qda_fit, newdata=validation)
+qda_predict_val <- ifelse(qda_predict_val$posterior>qda_cutoff2[3], -1, 1)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(qda_predict_val[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+qda_error_val3 <- (1-success/nrow(validation))*100
+
+
+### Logistic Regression Test Error
+require(nnet)
+glm_fit <- multinom(expert ~ NDAI+SD+AF, data = cv_data)
+glm_predict_test <- predict(glm_fit, newdata=test, type="probs")
+glm_predict_test <- ifelse(glm_predict_test > glm_cutoff2[3], 1, -1)
+# glm_predict <- predict(glm_fit, newdata=test)
+
+success=0
+for(i in 1:nrow(test)){
+  if(glm_predict_test[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+glm_error_test3 <- (1-success/nrow(test))*100
+
+
+### Logistic Regression Validation Error
+require(nnet)
+glm_fit <- multinom(expert ~ NDAI+SD+AF, data = train)
+glm_predict_val <- predict(glm_fit, newdata=validation, type="probs")
+glm_predict_val <- ifelse(glm_predict_val > glm_cutoff2[3], 1, -1)
+# glm_predict <- predict(glm_fit, newdata=test, type="probs")
+
+success=0
+for(i in 1:nrow(validation)){
+  if(glm_predict_val[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+glm_error_val3 <- (1-success/nrow(validation))*100
+
+
+### Random Forrest Test Error
+rf_fit <- ranger(formula = expert ~ NDAI+SD+AF, data=cv_data)
+rf_predict_test <-predict(rf_fit, data=test)
+rf_p <- ifelse(rf_predict_test$predictions > rf_cutoff2[3], 1, -1)
+
+success=0
+for(i in 1:nrow(test)){
+  if(rf_p[i]==test$expert[i]){
+    success <- success+1
+  }
+}
+rf_error_test3 <- (1-success/nrow(test))*100
+
+### Random Forrest Validation Error
+rf_fit <- ranger(formula = expert ~ NDAI+SD+AF, data=train)
+rf_predict_val<-predict(rf_fit, data=validation)
+rf_p <- ifelse(rf_predict_val$predictions > rf_cutoff2[3], 1, -1)
+
+success=0
+for(i in 1:nrow(validation)){
+  if(rf_p[i]==validation$expert[i]){
+    success <- success+1
+  }
+}
+rf_error_val3 <- (1-success/nrow(validation))*100
+
+
+
+############# Figure 9. Plotting ROC curves with optimal cutoff commputed using Metric 1 #######################
+
+p1 <- prediction(data.frame(glm_predict_val), validation$expert) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p2 <- prediction(lda_pred_val$posterior[,2], validation$expert) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p3 <- prediction(qda_predict_val$posterior[,2], validation$expert) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+p4 <- prediction(rf_predict_val$predictions, validation$expert) %>%
+  performance(measure = "tpr", x.measure = "fpr")
+
+plot(p1, col = "red")
+plot(p2, add = TRUE, col = "blue")
+plot(p3, add = TRUE, col = "green")
+plot(p4, add = TRUE, col = "black")
+
+points(x=1-glm_cutoff[2,1], y=glm_cutoff[1,1], col="red")
+points(x=1-lda_cutoff[2,1], y=lda_cutoff[1,1], col="blue")
+points(x=1-qda_cutoff[2,1], y=qda_cutoff[1,1], col="green")
+points(x=1-rf_cutoff[2,1], y=rf_cutoff[1,1], col="black")
+
+legend(0.8,0.3,c('lr','lda','qda','rf'),col=c("red","blue","green","black"), lty = 1)
+
+
+
+```
+
+
+```{r}
+#Problem 4 Part a
+##############  Figure 10. Compute the robustness of LDA ###################
+
+num_points<-floor(nrow(train)/12)
+errors_lda<-c()
+training_size<-c()
+for (i in 1:12) {
+  if (i<12) {
+    data_train_temp<-train[1:(i*num_points),]
+  }
+  else {
+    data_train_temp<-train
+  }
+  predictions<-lda_classifier(data_train_temp, validation)
+  errors_lda<-c(errors_lda,percent_error(validation$expert, predictions))
+  training_size<-c(training_size,nrow(data_train_temp))
+}
+
+
+df<-data.frame(cbind(training_size,errors_lda))
+ggplot(df,aes(x=training_size))+geom_point(aes(y=errors_lda)) + xlab("Training set size") + ylab('Validation error')
+
+
+```
+
+```{r}
+
+# Problem 4 Part b (Plotting patterns in misclassified samples)
+library(ggplot2)
+
+lda_fit <- lda(formula = expert ~ NDAI+SD+AF, data=train, prior = c(1,1)/2)
+lda_predict <- predict(object = lda_fit, newdata=validation)
+
+misclass<-validation[validation$expert!=lda_predict$class,]
+
+ggplot() + geom_point(aes(x= validation$x, y= validation$y, col= validation$expert)) + labs(x = "x", y = "y", col="expert_label") 
+
+#summary(misclass)
+## Figure 13
+ggplot() + geom_histogram(aes(x= validation$NDAI, col="red")) + geom_histogram(aes(x= misclass$NDAI, col="green")) 
+ggplot() + geom_histogram(aes(x= validation$SD, col="red")) + geom_histogram(aes(x= misclass$SD, col="green")) 
+ggplot() + geom_histogram(aes(x= validation$AF, col="red")) + geom_histogram(aes(x= misclass$AF, col="green")) 
+
+## Figure 14
+ggplot(data=validation) + geom_point(aes(x= x, y= y, col= NDAI))
+ggplot(data=misclass) + geom_point(aes(x= x, y= y, col= NDAI))
+
+
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
